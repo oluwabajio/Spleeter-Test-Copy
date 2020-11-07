@@ -60,9 +60,6 @@ import java.util.TreeMap;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-   // ArrayList<Short> shorta = new ArrayList<>();
-
-    private static final int PICKER_REQUEST_CODE = 101;
     private static final int PERMISSION_REQUEST_CODE = 102;
     AudioPicker audioPicker;
     Interpreter tflite;
@@ -74,11 +71,10 @@ public class MainActivity extends AppCompatActivity {
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         View view = binding.getRoot();
         setContentView(view);
-
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        audioPicker = new AudioPicker(this);
 
+        audioPicker = new AudioPicker(this);
         initListeners();
         checkPermission();
         initSpleeter();
@@ -92,24 +88,6 @@ public class MainActivity extends AppCompatActivity {
             Interpreter.Options tfliteOptions = new Interpreter.Options();
             tfliteOptions.setNumThreads(2);
             tflite = new Interpreter(loadModelFile(this), tfliteOptions);
-
-
-            //get the datatype and shape of the input tensor to be fed to tflite model
-            int imageTensorIndex = 0;
-
-            DataType imageDataType = tflite.getInputTensor(imageTensorIndex).dataType();
-            Log.e(TAG, "onCreate: Data Type is " + imageDataType);
-            int[] imageDataShape = tflite.getInputTensor(imageTensorIndex).shape();
-
-            //get the datatype and shape of the output prediction tensor from tflite model
-            int probabilityTensorIndex = 0;
-            int[] probabilityShape = tflite.getOutputTensor(probabilityTensorIndex).shape();
-            DataType probabilityDataType = tflite.getOutputTensor(probabilityTensorIndex).dataType();
-
-            Log.e(TAG, "onCreate: probabilityShape is " + probabilityShape.length);
-            Log.e(TAG, "onCreate: probabilityDataType is " + probabilityDataType.name());
-
-
         } catch (IOException e) {
             e.printStackTrace();
             Log.e(TAG, "onCreate: Error: " + e.getMessage());
@@ -157,16 +135,12 @@ public class MainActivity extends AppCompatActivity {
         while (framesReaded++ <= READ_THRESHOLD && (frame = bitStream.readFrame()) != null) {
             SampleBuffer sampleBuffer = (SampleBuffer) decoder.decodeFrame(frame, bitStream);
             short[] pcmChunk = sampleBuffer.getBuffer();
-//            for (int i = 0; i < pcmChunk.length; i++) {
-//                shorta.add(pcmChunk[i]);
-//            }
 
             for (short s : pcmChunk) {
                 outStream.write(s & 0xff);
                 outStream.write((s >> 8) & 0xff);
             }
-            //   audioTrack.write(outStream.toByteArray(), 0, outStream.toByteArray().length);
-
+            //   audioTrack.write(outStream.toByteArray(), 0, outStream.toByteArray().length); //playing byte array with audiotrack to be sure
             try {
                 outStream.flush();
             } catch (IOException e) {
@@ -176,39 +150,31 @@ public class MainActivity extends AppCompatActivity {
         }
 
         byte[] byteArray = outStream.toByteArray();
-        byte[] subarray =  Arrays.copyOfRange(byteArray, 0, 640000);
-        ByteBuffer byteBuffer = ByteBuffer.allocate(640000*2*4);
-        byteBuffer.put(subarray);
+        byte[] sampleByteArray = Arrays.copyOfRange(byteArray, 0, 640000); //we fetch small audio sample
+        ByteBuffer byteBuffer = ByteBuffer.allocate(640000 * 2 * 4);
+        byteBuffer.put(sampleByteArray);
+        byteBuffer.rewind();
+        
+        Object[] input = new Object[1];
+        input[0] = byteBuffer;
 
+        ByteBuffer instrumentalBuffer = ByteBuffer.allocateDirect(1 * 5120000);
+        ByteBuffer vocalBuffer = ByteBuffer.allocateDirect(1 * 5120000);
+        
+        Map outputs = new TreeMap<>();
+        outputs.put(0, instrumentalBuffer);
+        outputs.put(1, vocalBuffer);
 
-        Object[] input4 = new Object[1];
-        input4[0] = byteBuffer;
+        tflite.resizeInput(0, new int[]{sampleByteArray.length, 2});
+        tflite.runForMultipleInputsOutputs(input, outputs);
 
-        ByteBuffer identity = ByteBuffer.allocateDirect(1*5120000);
-        ByteBuffer identity2 = ByteBuffer.allocateDirect(1*5120000);
-        Map output = new TreeMap<>();
-        output.put(0, identity);
-        output.put(1, identity2);
-        tflite.resizeInput(0, new int[]{subarray.length, 2});
+        byte[] instrumental = instrumentalBuffer.array();
+        byte[] vocal = vocalBuffer.array();
 
-        tflite.runForMultipleInputsOutputs(input4, output);
-        Toast.makeText(this, ""+identity.hasArray()+ identity.array().length, Toast.LENGTH_SHORT).show();
-        Toast.makeText(this, "Successful"+ output.get(0).toString(), Toast.LENGTH_SHORT).show();
-        Toast.makeText(this, "Successful"+ identity.limit(), Toast.LENGTH_SHORT).show();
+        playAudio(instrumental);
+    }
 
-        Log.e(TAG, "mp3ToFloat: "+ tflite.getOutputTensor(0).shape().length +
-                " " + tflite.getOutputTensor(0).numElements()+
-                " "+ tflite.getOutputTensor(0).dataType()+
-                " "+ tflite.getOutputTensor(0).numDimensions());
-
-        byte[] d = identity.array();
-        for (int i=0;i<d.length;i++) {
-            Log.e(TAG, "mp3ToFloat: "+d[i]);
-        }
-
-
-
-
+    private void playAudio(byte[] instrumental) {
         final int sampleRate = 44100;
         final int minBufferSize = AudioTrack.getMinBufferSize(sampleRate,
                 AudioFormat.CHANNEL_OUT_STEREO,
@@ -222,33 +188,13 @@ public class MainActivity extends AppCompatActivity {
                 minBufferSize,
                 AudioTrack.MODE_STREAM);
         audioTrack.play();
-        audioTrack.write(identity, 0, outStream.toByteArray().length);
-    }
-
-    private ByteBuffer floatMe2(ArrayList<Short> shorta) {
-        int N = shorta.size();
-        int i = 0;
-        ByteBuffer byteBuf = ByteBuffer.allocate(2 * N);
-        while (N > i) {
-            byteBuf.putShort(shorta.get(i));
-            i++;
-        }
-        return byteBuf;
-    }
-
-    public static float[][] floatMe(List<Short> pcms) {
-        float[][] floaters = new float[pcms.size() / 2][2];
-        for (int i = 0; i < pcms.size(); i++) {
-            floaters[i][0] = pcms.get(i);
-            floaters[i][1] = pcms.get(i);
-        }
-        return floaters;
+        audioTrack.write(instrumental, 0, instrumental.length);
     }
 
 
     private void initListeners() {
         binding.btnOpenFile.setOnClickListener(v -> {
-           selectAudioFile();
+            selectAudioFile();
         });
     }
 
@@ -274,22 +220,10 @@ public class MainActivity extends AppCompatActivity {
                     Log.e(TAG, "onActivityResult: Error " + message);
                 }
             });
-
             audioPicker.pickAudio();
-
         } else {
-
         }
     }
-
-
-
-
-
-
-
-
-
 
 
     @Override
@@ -311,15 +245,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-
         if (resultCode != Activity.RESULT_OK) {
             return;
         }
-
         if (requestCode == Picker.PICK_AUDIO && resultCode == RESULT_OK) {
             audioPicker.submit(data);
         }
-
 
     }
 
