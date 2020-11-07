@@ -164,6 +164,7 @@ public class MainActivity extends AppCompatActivity {
         Map outputs = new TreeMap<>();
         outputs.put(0, instrumentalBuffer);
         outputs.put(1, vocalBuffer);
+        
 
         tflite.resizeInput(0, new int[]{sampleByteArray.length, 2});
         tflite.runForMultipleInputsOutputs(input, outputs);
