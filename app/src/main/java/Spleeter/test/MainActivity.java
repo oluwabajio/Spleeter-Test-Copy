@@ -5,11 +5,13 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.AssetFileDescriptor;
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.Build;
 import android.os.Bundle;
+
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
@@ -44,12 +46,17 @@ import org.tensorflow.lite.Interpreter;
 import org.tensorflow.lite.Tensor;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
@@ -57,6 +64,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
@@ -74,12 +82,34 @@ public class MainActivity extends AppCompatActivity {
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+        // testArray();
+
         audioPicker = new AudioPicker(this);
         initListeners();
         checkPermission();
         initSpleeter();
 
 
+
+    }
+
+    private void testArray() {
+        final byte[] data = new byte[] {
+                64, 73, 15, -48, 127, 127, -1, -1, 0, 0, 0, 1, 0, 0, 0, 0
+        };
+
+        final FloatBuffer fb = ByteBuffer.wrap(data).asFloatBuffer();
+        final float[] dst = new float[fb.capacity()];
+        fb.get(dst); // Copy the contents of the FloatBuffer into dst
+        Log.e(TAG, "testArray: Size is "+ dst.length );
+        for (int i = 0; i < dst.length; i++) {
+            Log.e(TAG, "testArray: "+dst[i] );
+            if (i == dst.length - 1) {
+
+            } else {
+                Log.e(TAG, ", ");
+            }
+        }
     }
 
 
@@ -149,30 +179,117 @@ public class MainActivity extends AppCompatActivity {
             bitStream.closeFrame();
         }
 
+
         byte[] byteArray = outStream.toByteArray();
-        byte[] sampleByteArray = Arrays.copyOfRange(byteArray, 0, 640000); //we fetch small audio sample
-        ByteBuffer byteBuffer = ByteBuffer.allocate(640000 * 2 * 4);
-        byteBuffer.put(sampleByteArray);
+        byte[] sampleByteArray = Arrays.copyOfRange(byteArray, 0, 1000000); //we fetch small audio sample
+
+
+        float[] fArr = byteToFloat(byteArray);
+        byte[] sampleFloatArray = Arrays.copyOfRange(byteArray, 0, 640000);
+        ByteBuffer byteBuffer = ByteBuffer.allocate(320000 *2* 4);
+//        float[] fArr2 = byteToFloat2(byteArray);
+//        byte[] bytess = floatToByte(fArr);
+//        playAudio(bytess);
+
+        DataType imageDataType  = tflite.getInputTensor(0).dataType();
+        Log.e(TAG, "mp3ToFloat: Float Array Size is "+fArr.length );
+        for (int i = 0; i < sampleFloatArray.length; i+=2) {// loop thrugh the 128 float arrays, each float array is of size 129
+            float a0 = sampleFloatArray[i];
+            float a1 = sampleFloatArray[i+1];
+            float floats[] =  {a0, a1};
+//            Log.e(TAG, "mp3ToFloat: float[0] = "+ floats[0] );
+//            Log.e(TAG, "mp3ToFloat: float[1] = "+ floats[1] );
+
+
+
+            TensorBuffer tensorBuffer = TensorBuffer.createDynamic(imageDataType);
+            tensorBuffer.loadArray(floats, new int[]{1, 2});
+            ByteBuffer inByteBuffer = tensorBuffer.getBuffer();
+            byteBuffer.put(inByteBuffer);
+        }
+        Log.e(TAG, "mp3ToFloat: ByteBuffer Size is "+ byteBuffer.limit() );
+
         byteBuffer.rewind();
-        
+
         Object[] input = new Object[1];
         input[0] = byteBuffer;
 
-        ByteBuffer instrumentalBuffer = ByteBuffer.allocateDirect(1 * 5120000);
-        ByteBuffer vocalBuffer = ByteBuffer.allocateDirect(1 * 5120000);
-        
+        ByteBuffer instrumentalBuffer = ByteBuffer.allocateDirect(2560000);
+        ByteBuffer vocalBuffer = ByteBuffer.allocateDirect(2560000);
+
         Map outputs = new TreeMap<>();
         outputs.put(0, instrumentalBuffer);
         outputs.put(1, vocalBuffer);
-        
 
-        tflite.resizeInput(0, new int[]{sampleByteArray.length, 2});
+
+        tflite.resizeInput(0, new int[]{320000, 2});
+        Log.e(TAG, "mp3ToFloat: start running");
         tflite.runForMultipleInputsOutputs(input, outputs);
+        Log.e(TAG, "mp3ToFloat: finished");
 
         byte[] instrumental = instrumentalBuffer.array();
         byte[] vocal = vocalBuffer.array();
+        //Log.e(TAG, "mp3ToFloat: "+ instrumental.length );
+        for (int i=0; i<instrumental.length;i++) {
+            Log.e(TAG, "mp3ToFloat: "+instrumental[i] );
+        }
+        playAudio(vocal);
+    }
 
-        playAudio(instrumental);
+    private float[] byteToFloat2(byte[] byteArray) {
+        FloatBuffer l = ByteBuffer.wrap(byteArray).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
+        final FloatBuffer fb = ByteBuffer.wrap(byteArray).asFloatBuffer();
+        final float[] dst = new float[fb.capacity()];
+        fb.get(dst);
+        return dst;
+    }
+
+    private float[] byteToFloat(byte[] byteArray) {
+        ByteArrayInputStream bas = new ByteArrayInputStream(byteArray);
+        DataInputStream ds = new DataInputStream(bas);
+        float[] fArr = new float[byteArray.length / 4];  // 4 bytes per float
+        for (int i = 0; i < fArr.length; i++) {
+            try {
+                fArr[i] = ds.readFloat();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return fArr;
+    }
+
+    private byte[] floatToByte(float[] floatArray) {
+        ByteArrayOutputStream bas2 = new ByteArrayOutputStream();
+        DataOutputStream ds2 = new DataOutputStream(bas2);
+        for (float f : floatArray) {
+            try {
+                ds2.writeFloat(f);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        byte[] bytes = bas2.toByteArray();
+        return bytes;
+    }
+
+    private void playAudioFloat(float[] l) {
+        final int SAMPLE_RATE = 48000;
+        final int CHANNEL_COUNT = AudioFormat.CHANNEL_OUT_STEREO;
+        final int ENCODING = AudioFormat.ENCODING_PCM_FLOAT;
+
+        int bufferSize = AudioTrack.getMinBufferSize(SAMPLE_RATE, CHANNEL_COUNT, ENCODING);
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build();
+        AudioFormat audioFormat = new AudioFormat.Builder()
+                .setEncoding(ENCODING)
+                .setSampleRate(SAMPLE_RATE)
+                .build();
+        AudioTrack audioTrack = new AudioTrack(audioAttributes, audioFormat, bufferSize
+                , AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE);
+        audioTrack.play();
+        audioTrack.write(l, 0, l.length, AudioTrack.WRITE_BLOCKING);
     }
 
     private void playAudio(byte[] instrumental) {
