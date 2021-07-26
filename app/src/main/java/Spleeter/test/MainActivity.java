@@ -186,7 +186,7 @@ public class MainActivity extends AppCompatActivity {
 
 
         byte[] sampleFloatArray = Arrays.copyOfRange(byteArray, 0, 320000);
-        ByteBuffer byteBuffer = ByteBuffer.allocate(320000 *2* 4);
+
 
         float[] fArr = byteToFloat(byteArray);
         float[] fArr2 = byteToFloat2(byteArray);
@@ -198,7 +198,9 @@ public class MainActivity extends AppCompatActivity {
         DataType imageDataType  = tflite.getInputTensor(0).dataType();
         Log.e(TAG, "mp3ToFloat: Float Array Size is "+fArr.length );
 
-        tflite.resizeInput(0, new int[]{320000, 2});
+        tflite.resizeInput(0, new int[]{160000, 2});
+
+
 
         float floats[] = new float[320000];
         for (int i = 0; i < sampleFloatArray.length-40; i+=2) {// loop thrugh the 128 float arrays, each float array is of size 129
@@ -211,9 +213,10 @@ public class MainActivity extends AppCompatActivity {
 
         }
 
+        ByteBuffer byteBuffer = ByteBuffer.allocate(160000 *2* 4);
 
         TensorBuffer tensorBuffer = TensorBuffer.createDynamic(imageDataType);
-        tensorBuffer.loadArray(floats);
+        tensorBuffer.loadArray(floats, new int[]{160000, 2});
         ByteBuffer inByteBuffer = tensorBuffer.getBuffer();
         byteBuffer.put(inByteBuffer);
         byteBuffer.rewind();
@@ -221,8 +224,8 @@ public class MainActivity extends AppCompatActivity {
         Object[] input = new Object[1];
         input[0] = byteBuffer;
 
-        ByteBuffer instrumentalBuffer = ByteBuffer.allocateDirect(2560000);
-        ByteBuffer vocalBuffer = ByteBuffer.allocateDirect(2560000);
+        ByteBuffer instrumentalBuffer = ByteBuffer.allocateDirect(1280000);
+        ByteBuffer vocalBuffer = ByteBuffer.allocateDirect(1280000);
 
         Map outputs = new TreeMap<>();
         outputs.put(0, instrumentalBuffer);
