@@ -184,31 +184,38 @@ public class MainActivity extends AppCompatActivity {
         byte[] sampleByteArray = Arrays.copyOfRange(byteArray, 0, 1000000); //we fetch small audio sample
 
 
-        float[] fArr = byteToFloat(byteArray);
-        byte[] sampleFloatArray = Arrays.copyOfRange(byteArray, 0, 640000);
+
+        byte[] sampleFloatArray = Arrays.copyOfRange(byteArray, 0, 320000);
         ByteBuffer byteBuffer = ByteBuffer.allocate(320000 *2* 4);
-//        float[] fArr2 = byteToFloat2(byteArray);
-//        byte[] bytess = floatToByte(fArr);
-//        playAudio(bytess);
+
+        float[] fArr = byteToFloat(byteArray);
+        float[] fArr2 = byteToFloat2(byteArray);
+        byte[] bytess = floatToByte(fArr);
+      //  playAudio(bytess);
+      //  playAudioFloat(fArr);
+
 
         DataType imageDataType  = tflite.getInputTensor(0).dataType();
         Log.e(TAG, "mp3ToFloat: Float Array Size is "+fArr.length );
-        for (int i = 0; i < sampleFloatArray.length; i+=2) {// loop thrugh the 128 float arrays, each float array is of size 129
+
+        tflite.resizeInput(0, new int[]{320000, 2});
+
+        float floats[] = new float[320000];
+        for (int i = 0; i < sampleFloatArray.length-40; i+=2) {// loop thrugh the 128 float arrays, each float array is of size 129
             float a0 = sampleFloatArray[i];
             float a1 = sampleFloatArray[i+1];
-            float floats[] =  {a0, a1};
 //            Log.e(TAG, "mp3ToFloat: float[0] = "+ floats[0] );
 //            Log.e(TAG, "mp3ToFloat: float[1] = "+ floats[1] );
+            floats[i/2] = a0;
+            floats[160000+(i/2)] = a1;
 
-
-
-            TensorBuffer tensorBuffer = TensorBuffer.createDynamic(imageDataType);
-            tensorBuffer.loadArray(floats, new int[]{1, 2});
-            ByteBuffer inByteBuffer = tensorBuffer.getBuffer();
-            byteBuffer.put(inByteBuffer);
         }
-        Log.e(TAG, "mp3ToFloat: ByteBuffer Size is "+ byteBuffer.limit() );
 
+
+        TensorBuffer tensorBuffer = TensorBuffer.createDynamic(imageDataType);
+        tensorBuffer.loadArray(floats);
+        ByteBuffer inByteBuffer = tensorBuffer.getBuffer();
+        byteBuffer.put(inByteBuffer);
         byteBuffer.rewind();
 
         Object[] input = new Object[1];
@@ -222,7 +229,7 @@ public class MainActivity extends AppCompatActivity {
         outputs.put(1, vocalBuffer);
 
 
-        tflite.resizeInput(0, new int[]{320000, 2});
+
         Log.e(TAG, "mp3ToFloat: start running");
         tflite.runForMultipleInputsOutputs(input, outputs);
         Log.e(TAG, "mp3ToFloat: finished");
