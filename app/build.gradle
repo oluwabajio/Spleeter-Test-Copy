@@ -58,4 +58,5 @@ dependencies {
     implementation 'com.kbeanie:multipicker:1.6@aar'
     // This dependency adds the necessary TF op support.
     implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.3.0'
 }

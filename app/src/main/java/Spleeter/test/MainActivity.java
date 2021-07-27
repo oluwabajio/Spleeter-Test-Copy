@@ -44,6 +44,8 @@ import android.widget.Toast;
 import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.Interpreter;
 import org.tensorflow.lite.Tensor;
+import org.tensorflow.lite.gpu.CompatibilityList;
+import org.tensorflow.lite.gpu.GpuDelegate;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 
 import java.io.ByteArrayInputStream;
@@ -119,6 +121,19 @@ public class MainActivity extends AppCompatActivity {
         try {
             Interpreter.Options tfliteOptions = new Interpreter.Options();
             tfliteOptions.setNumThreads(2);
+            CompatibilityList compatList = new CompatibilityList();
+
+            if(compatList.isDelegateSupportedOnThisDevice()){
+                // if the device has a supported GPU, add the GPU delegate
+                GpuDelegate.Options delegateOptions = compatList.getBestOptionsForThisDevice();
+                GpuDelegate gpuDelegate = new GpuDelegate(delegateOptions);
+                tfliteOptions.addDelegate(gpuDelegate);
+                Log.e(TAG, "initSpleeter: supported");
+            }
+            else {
+                Log.e(TAG, "initSpleeter: not supported");
+            }
+
             tflite = new Interpreter(loadModelFile(this), tfliteOptions);
         } catch (IOException e) {
             e.printStackTrace();
@@ -183,7 +198,13 @@ public class MainActivity extends AppCompatActivity {
 
 
         byte[] byteArray = outStream.toByteArray();
-        byte[] sampleFloatArray = Arrays.copyOfRange(byteArray, 0, 640000); //we fetch small audio sample
+
+        Log.e(TAG, "mp3ToFloat: "+byteArray.length );
+        if (false) {
+            return;
+        }
+
+        byte[] sampleFloatArray = Arrays.copyOfRange(byteArray, 0, 1280000); //we fetch small audio sample
 
 
         float[] fArr = byteToFloat(byteArray);
@@ -195,40 +216,48 @@ public class MainActivity extends AppCompatActivity {
 
 
         DataType imageDataType  = tflite.getInputTensor(0).dataType();
-        tflite.resizeInput(0, new int[]{320000, 2});
+        tflite.resizeInput(0, new int[]{640000, 2});
 
 
 
 
 
 
-        float floats[] = new float[640000];
-        for (int i = 0; i < 640000-4; i+=2) {// loop thrugh the 128 float arrays, each float array is of size 129
-            float a0 = sampleFloatArray[i];
-            float a1 = sampleFloatArray[i+1];
+        byte bytes[] = new byte[1280000];
+        float floats[] = new float[1280000];
+        for (int i = 0; i < 1280000-4; i+=2) {// loop thrugh the 128 float arrays, each float array is of size 129
+          //  byte a0 = sampleFloatArray[i];
+            //byte a1 = sampleFloatArray[i+1];
 //            Log.e(TAG, "mp3ToFloat: float[0] = "+ floats[0] );
 //            Log.e(TAG, "mp3ToFloat: float[1] = "+ floats[1] );
-            floats[i/2] = a0;
-            floats[320000+(i/2)] = a1;
+            floats[i/2] = sampleFloatArray[i];
+           floats[640000+(i/2)] = sampleFloatArray[i+1];
 
         }
+
+    //    playAudio(bytes);
+   ByteBuffer buf = ByteBuffer.wrap(bytes);
+
+
+
 
         int[] probabilityShape =  tflite.getInputTensor(0).shape();
         DataType probabilityDataType =  tflite.getInputTensor(0).dataType();
 
 
+        Log.e(TAG, "mp3ToFloat: size = "+ byteToFloat(bytes).length );
+        Log.e(TAG, "mp3ToFloat: size = "+ byteToFloat2(bytes).length );
+
 
         TensorBuffer tensorBuffer = TensorBuffer.createDynamic(imageDataType);
-        tensorBuffer.loadArray(floats, probabilityShape);
+
+       tensorBuffer.loadArray(floats, probabilityShape);
+
         ByteBuffer inByteBuffer = tensorBuffer.getBuffer();
 
 
         Object[] input = new Object[1];
         input[0] = inByteBuffer;
-
-       // ByteBuffer instrumentalBuffer = ByteBuffer.allocateDirect(2560000);
-        //ByteBuffer vocalBuffer = ByteBuffer.allocateDirect(2560000);
-
 
 
          TensorBuffer outputTensorBufferI =
