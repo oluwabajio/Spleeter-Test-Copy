@@ -84,6 +84,8 @@ public class MainActivity extends AppCompatActivity {
 
         // testArray();
 
+
+
         audioPicker = new AudioPicker(this);
         initListeners();
         checkPermission();
@@ -181,11 +183,7 @@ public class MainActivity extends AppCompatActivity {
 
 
         byte[] byteArray = outStream.toByteArray();
-        byte[] sampleByteArray = Arrays.copyOfRange(byteArray, 0, 1000000); //we fetch small audio sample
-
-
-
-        byte[] sampleFloatArray = Arrays.copyOfRange(byteArray, 0, 640000);
+        byte[] sampleFloatArray = Arrays.copyOfRange(byteArray, 0, 640000); //we fetch small audio sample
 
 
         float[] fArr = byteToFloat(byteArray);
@@ -193,17 +191,19 @@ public class MainActivity extends AppCompatActivity {
         byte[] bytess = floatToByte(fArr);
       //  playAudio(bytess);
       //  playAudioFloat(fArr);
+       // Log.e(TAG, "mp3ToFloat: Float Array Size is "+fArr.length );
 
 
         DataType imageDataType  = tflite.getInputTensor(0).dataType();
-        Log.e(TAG, "mp3ToFloat: Float Array Size is "+fArr.length );
-
         tflite.resizeInput(0, new int[]{320000, 2});
 
 
 
+
+
+
         float floats[] = new float[640000];
-        for (int i = 0; i < sampleFloatArray.length-4; i+=2) {// loop thrugh the 128 float arrays, each float array is of size 129
+        for (int i = 0; i < 640000-4; i+=2) {// loop thrugh the 128 float arrays, each float array is of size 129
             float a0 = sampleFloatArray[i];
             float a1 = sampleFloatArray[i+1];
 //            Log.e(TAG, "mp3ToFloat: float[0] = "+ floats[0] );
@@ -213,23 +213,33 @@ public class MainActivity extends AppCompatActivity {
 
         }
 
-        ByteBuffer byteBuffer = ByteBuffer.allocate(320000 *2* 4);
+        int[] probabilityShape =  tflite.getInputTensor(0).shape();
+        DataType probabilityDataType =  tflite.getInputTensor(0).dataType();
+
+
 
         TensorBuffer tensorBuffer = TensorBuffer.createDynamic(imageDataType);
-        tensorBuffer.loadArray(floats, new int[]{320000, 2});
+        tensorBuffer.loadArray(floats, probabilityShape);
         ByteBuffer inByteBuffer = tensorBuffer.getBuffer();
-        byteBuffer.put(inByteBuffer);
-        byteBuffer.rewind();
+
 
         Object[] input = new Object[1];
-        input[0] = byteBuffer;
+        input[0] = inByteBuffer;
 
-        ByteBuffer instrumentalBuffer = ByteBuffer.allocateDirect(2560000);
-        ByteBuffer vocalBuffer = ByteBuffer.allocateDirect(2560000);
+       // ByteBuffer instrumentalBuffer = ByteBuffer.allocateDirect(2560000);
+        //ByteBuffer vocalBuffer = ByteBuffer.allocateDirect(2560000);
+
+
+
+         TensorBuffer outputTensorBufferI =
+                TensorBuffer.createFixedSize(probabilityShape, probabilityDataType);
+
+        TensorBuffer outputTensorBufferV =
+                TensorBuffer.createFixedSize(probabilityShape, probabilityDataType);
 
         Map outputs = new TreeMap<>();
-        outputs.put(0, instrumentalBuffer);
-        outputs.put(1, vocalBuffer);
+        outputs.put(0, outputTensorBufferI.getBuffer());
+        outputs.put(1, outputTensorBufferV.getBuffer());
 
 
 
@@ -237,13 +247,25 @@ public class MainActivity extends AppCompatActivity {
         tflite.runForMultipleInputsOutputs(input, outputs);
         Log.e(TAG, "mp3ToFloat: finished");
 
-        byte[] instrumental = instrumentalBuffer.array();
-        byte[] vocal = vocalBuffer.array();
+       // byte[] instrumental = instrumentalBuffer.array();
+        //byte[] vocal = vocalBuffer.array();
         //Log.e(TAG, "mp3ToFloat: "+ instrumental.length );
-        for (int i=0; i<instrumental.length;i++) {
-            Log.e(TAG, "mp3ToFloat: "+instrumental[i] );
-        }
-        playAudio(vocal);
+//        for (int i=0; i<instrumental.length;i++) {
+//            Log.e(TAG, "mp3ToFloat: "+instrumental[i] );
+//        }
+
+//        byte[] b = new byte[320000];
+//        for (int i = 0; i < 640000-4; i+=2) {// loop thrugh the 128 float arrays, each float array is of size 129
+//            byte a0 = instrumental[i/2];
+//            byte a1 = instrumental[320000+(i/2)];
+////            Log.e(TAG, "mp3ToFloat: float[0] = "+ floats[0] );
+////            Log.e(TAG, "mp3ToFloat: float[1] = "+ floats[1] );
+//            b[i] = a0;
+//            b[(i)+1] = a1;
+//
+//        }
+
+        playAudio(outputTensorBufferI.getBuffer().array());
     }
 
     private float[] byteToFloat2(byte[] byteArray) {
